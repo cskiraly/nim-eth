@@ -112,8 +112,10 @@ const
   maxNodesPerMessage = 3 ## Maximum amount of ENRs per individual Nodes message
   refreshInterval = 5.minutes ## Interval of launching a random query to
   ## refresh the routing table.
-  revalidateMax = 10000 ## Revalidation of a peer is done between 0 and this
-  ## value in milliseconds
+  revalidateMax = 10000 ## Revalidation of a peer is done between revalidateMin
+  ##  and this value in milliseconds
+  revalidateMin = revalidateMax div 2 ## Revalidation of a peer is done between this
+  ## value in milliseconds and revalidateMax
   ipMajorityInterval = 5.minutes ## Interval for checking the latest IP:Port
   ## majority and updating this when ENR auto update is set.
   initialLookups = 1 ## Amount of lookups done when populating the routing table
@@ -838,7 +840,7 @@ proc revalidateLoop(d: Protocol) {.async.} =
   ## message.
   try:
     while true:
-      await sleepAsync(milliseconds(d.rng[].rand(revalidateMax)))
+      await sleepAsync(milliseconds(revalidateMin + d.rng[].rand(revalidateMax - revalidateMin)))
       let n = d.routingTable.nodeToRevalidate()
       if not n.isNil:
         asyncSpawn d.revalidateNode(n)
