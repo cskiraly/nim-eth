@@ -15,12 +15,21 @@ import
 
 export stint, results
 
+const
+  avgSmoothingFactor = 0.9
+
 type
   NodeId* = UInt256
 
   Address* = object
     ip*: IpAddress
     port*: Port
+
+  Stats* = object
+    rttMin*: float #millisec
+    rttAvg*: float #millisec
+    bwAvg*: float #bps
+    bwMax*: float #bps
 
   Node* = ref object
     id*: NodeId
@@ -29,6 +38,7 @@ type
     record*: Record
     seen*: bool ## Indicates if there was at least one successful
     ## request-response with this node.
+    stats*: Stats # traffic measurements and statistics
 
 func toNodeId*(pk: PublicKey): NodeId =
   ## Convert public key to a node identifier.
@@ -72,6 +82,23 @@ func update*(n: Node, pk: PrivateKey, ip: Opt[IpAddress],
     n.address = Opt.none(Address)
 
   ok()
+
+func registerRtt*(n: Node, rtt: Duration) =
+  ## register an RTT measurement
+  let rttMs = rtt.nanoseconds.float / 1e6
+  n.stats.rttMin =
+    if n.stats.rttMin == 0: rttMs
+    else: min(n.stats.rttMin, rttMs)
+  n.stats.rttAvg =
+    if n.stats.rttAvg == 0: rttMs
+    else: avgSmoothingFactor * n.stats.rttAvg + (1.0 - avgSmoothingFactor) * rttMs
+
+func registerBw*(n: Node, bw: float) =
+  ## register an bandwidth measurement
+  n.stats.bwMax = max(n.stats.bwMax, bw)
+  n.stats.bwAvg =
+    if n.stats.bwAvg == 0: bw
+    else: avgSmoothingFactor * n.stats.bwAvg + (1.0 - avgSmoothingFactor) * bw
 
 func hash*(n: Node): hashes.Hash = hash(n.pubkey.toRaw)
 
