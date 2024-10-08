@@ -139,7 +139,7 @@ type
     localNode*: Node
     privateKey: PrivateKey
     bindAddress: OptAddress ## UDP binding address
-    pendingRequests: Table[AESGCMNonce, PendingRequest]
+    pendingRequests: Table[AESGCMNonce, (PendingRequest, Moment)]
     routingTable*: RoutingTable
     codec*: Codec
     awaitedMessages: Table[(NodeId, RequestId), Future[Opt[Message]]]
@@ -441,9 +441,15 @@ proc receive*(d: Protocol, a: Address, packet: openArray[byte]) =
 
     of Flag.Whoareyou:
       trace "Received whoareyou packet", address = a
-      var pr: PendingRequest
-      if d.pendingRequests.take(packet.whoareyou.requestNonce, pr):
+      var
+        prt: (PendingRequest, Moment)
+      if d.pendingRequests.take(packet.whoareyou.requestNonce, prt):
+        let pr = prt[0]
+        let startTime = prt[1]
         let toNode = pr.node
+        let rtt = Moment.now() - startTime
+        # trace "whoareyou RTT:", rtt, node = toNode
+        toNode.registerRtt(rtt)
         # This is a node we previously contacted and thus must have an address.
         doAssert(toNode.address.isSome())
         let address = toNode.address.get()
@@ -500,7 +506,7 @@ proc replaceNode(d: Protocol, n: Node) =
 proc registerRequest(d: Protocol, n: Node, message: seq[byte],
     nonce: AESGCMNonce) =
   let request = PendingRequest(node: n, message: message)
-  if not d.pendingRequests.hasKeyOrPut(nonce, request):
+  if not d.pendingRequests.hasKeyOrPut(nonce, (request, Moment.now())):
     sleepAsync(d.responseTimeout).addCallback() do(data: pointer):
       d.pendingRequests.del(nonce)
 
