@@ -543,6 +543,16 @@ proc waitNodes(d: Protocol, fromNode: Node, reqId: RequestId):
         op = await d.waitMessage(fromNode, reqId)
         if op.isSome and op.get.kind == nodes:
           res.add(op.get.nodes.enrs)
+          # Estimate bandwidth based on UDP packet train received, assuming these were
+          # released fast and spaced in time by bandwidth bottleneck. This is just a rough
+          # packet-pair based estimate, far from being perfect.
+          # TODO: get message size from lower layer for better bandwidth estimate
+          # TODO: get better reception timestamp from lower layers
+          let
+            deltaT = Moment.now() - firstTime
+            bwBps = 500.0 * 8.0 / (deltaT.nanoseconds.float / i.float / 1e9)
+          # trace "bw estimate:", deltaT, i, bw_mbps = bwBps / 1e6, node = fromNode
+          fromNode.registerBw(bwBps)
         else:
           # No error on this as we received some nodes.
           break
