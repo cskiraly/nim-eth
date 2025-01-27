@@ -423,13 +423,15 @@ proc sendWhoareyou(d: Protocol, toId: NodeId, a: Address,
     debug "Node with this id already has ongoing handshake, ignoring packet"
 
 proc receive*(d: Protocol, a: Address, packet: openArray[byte]) =
+  let rxByteLen = packet.len
   let decoded = d.codec.decodePacket(a, packet)
   if decoded.isOk:
     let packet = decoded[]
     case packet.flag
     of OrdinaryMessage:
       if packet.messageOpt.isSome():
-        let message = packet.messageOpt.get()
+        var message = packet.messageOpt.get()
+        message.rxByteLen = rxByteLen
         trace "Received message packet", srcId = packet.srcId, address = a,
           kind = message.kind
         d.handleMessage(packet.srcId, a, message)
@@ -538,7 +540,9 @@ proc waitNodes(d: Protocol, fromNode: Node, reqId: RequestId):
       let firstTime = Moment.now()
       let rtt = firstTime - startTime
       # trace "nodes RTT:", rtt, node = fromNode
+      var cumByteLen = 0
       # fromNode.registerRtt(rtt) # might measure 2xRTT during handshake
+      var bwBps = 0.0
       for i in 1 ..< total:
         op = await d.waitMessage(fromNode, reqId)
         if op.isSome and op.get.kind == nodes:
@@ -548,14 +552,17 @@ proc waitNodes(d: Protocol, fromNode: Node, reqId: RequestId):
           # packet-pair based estimate, far from being perfect.
           # TODO: get message size from lower layer for better bandwidth estimate
           # TODO: get better reception timestamp from lower layers
+          cumByteLen += op.get.rxByteLen
           let
             deltaT = Moment.now() - firstTime
-            bwBps = 500.0 * 8.0 / (deltaT.nanoseconds.float / i.float / 1e9)
           # trace "bw estimate:", deltaT, i, bw_mbps = bwBps / 1e6, node = fromNode
-          fromNode.registerBw(bwBps)
+          bwBps = (cumByteLen * 8).float / (deltaT.nanoseconds.float / 1e9)
         else:
           # No error on this as we received some nodes.
           break
+      if bwBps > 0:
+        # info "bw estimate reg:", bwBps
+        fromNode.registerBw(bwBps)
       return ok(res)
     else:
       discovery_message_requests_outgoing.inc(labelValues = ["invalid_response"])

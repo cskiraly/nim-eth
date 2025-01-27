@@ -74,6 +74,7 @@ type
 
   Message* = object
     reqId*: RequestId
+    rxByteLen*: int
     case kind*: MessageKind
     of ping:
       ping*: PingMessage
