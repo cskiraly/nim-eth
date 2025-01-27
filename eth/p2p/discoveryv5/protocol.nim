@@ -538,7 +538,7 @@ proc waitNodes(d: Protocol, fromNode: Node, reqId: RequestId):
       let firstTime = Moment.now()
       let rtt = firstTime - startTime
       # trace "nodes RTT:", rtt, node = fromNode
-      fromNode.registerRtt(rtt)
+      # fromNode.registerRtt(rtt) # might measure 2xRTT during handshake
       for i in 1 ..< total:
         op = await d.waitMessage(fromNode, reqId)
         if op.isSome and op.get.kind == nodes:
@@ -592,7 +592,7 @@ proc ping*(d: Protocol, toNode: Node):
   let resp = await d.waitMessage(toNode, reqId)
   let rtt = Moment.now() - startTime
   # trace "ping RTT:", rtt, node = toNode
-  toNode.registerRtt(rtt)
+  # toNode.registerRtt(rtt) # might measure 2xRTT during handshake
 
   if resp.isSome():
     if resp.get().kind == pong:
@@ -635,7 +635,7 @@ proc talkReq*(d: Protocol, toNode: Node, protocol, request: seq[byte]):
   let resp = await d.waitMessage(toNode, reqId)
   let rtt = Moment.now() - startTime
   # trace "talk RTT:", rtt, node = toNode
-  toNode.registerRtt(rtt)
+  # toNode.registerRtt(rtt) # might measure 2xRTT during handshake
 
   if resp.isSome():
     if resp.get().kind == talkResp:
