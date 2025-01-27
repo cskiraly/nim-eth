@@ -15,6 +15,8 @@ import
   std/[hashes, net],
   ./enr
 
+from chronos import Moment
+
 export enr
 
 type
@@ -75,6 +77,7 @@ type
   Message* = object
     reqId*: RequestId
     rxByteLen*: int
+    rxTs*: Moment
     case kind*: MessageKind
     of ping:
       ping*: PingMessage

@@ -422,7 +422,7 @@ proc sendWhoareyou(d: Protocol, toId: NodeId, a: Address,
   else:
     debug "Node with this id already has ongoing handshake, ignoring packet"
 
-proc receive*(d: Protocol, a: Address, packet: openArray[byte]) =
+proc receive*(d: Protocol, a: Address, packet: openArray[byte], rxTs: Moment) =
   let rxByteLen = packet.len
   let decoded = d.codec.decodePacket(a, packet)
   if decoded.isOk:
@@ -432,6 +432,7 @@ proc receive*(d: Protocol, a: Address, packet: openArray[byte]) =
       if packet.messageOpt.isSome():
         var message = packet.messageOpt.get()
         message.rxByteLen = rxByteLen
+        message.rxTs = rxTs
         trace "Received message packet", srcId = packet.srcId, address = a,
           kind = message.kind
         d.handleMessage(packet.srcId, a, message)
@@ -490,8 +491,7 @@ proc processClient(transp: DatagramTransport, raddr: TransportAddress):
               # This is likely to be local network connection issues.
               warn "Transport getMessage", exception = e.name, msg = e.msg
               return
-
-  proto.receive(Address(ip: raddr.toIpAddress(), port: raddr.port), buf)
+  proto.receive(Address(ip: raddr.toIpAddress(), port: raddr.port), buf, transp.rxts)
 
 proc replaceNode(d: Protocol, n: Node) =
   if n.record notin d.bootstrapRecords:
@@ -537,9 +537,9 @@ proc waitNodes(d: Protocol, fromNode: Node, reqId: RequestId):
     if op.get.kind == nodes:
       var res = op.get.nodes.enrs
       let total = op.get.nodes.total
-      let firstTime = Moment.now()
-      let rtt = firstTime - startTime
-      # trace "nodes RTT:", rtt, node = fromNode
+      let rtt = Moment.now() - startTime
+      let firstTime = op.get.rxTs
+      let firstTimeApp = Moment.now()
       var cumByteLen = 0
       # fromNode.registerRtt(rtt) # might measure 2xRTT during handshake
       var bwBps = 0.0
@@ -554,8 +554,7 @@ proc waitNodes(d: Protocol, fromNode: Node, reqId: RequestId):
           # TODO: get better reception timestamp from lower layers
           cumByteLen += op.get.rxByteLen
           let
-            deltaT = Moment.now() - firstTime
-          # trace "bw estimate:", deltaT, i, bw_mbps = bwBps / 1e6, node = fromNode
+            deltaT = op.get.rxTs - firstTime
           bwBps = (cumByteLen * 8).float / (deltaT.nanoseconds.float / 1e9)
         else:
           # No error on this as we received some nodes.
